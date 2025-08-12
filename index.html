@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bouncing Balls – Blockly Rule Editor</title>
+  
+  <!-- External Dependencies -->
+  <script src="https://cdn.jsdelivr.net/npm/seedrandom@3.0.5/seedrandom.min.js"></script>
+  <script src="https://unpkg.com/blockly/blockly.min.js"></script>
+  
+  <!-- Project Styles -->
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <h1>Bouncing Balls <span class="sub">— deterministic, block rules</span></h1>
+    <div class="col" style="gap:12px">
+      <div class="group col">
+        <div class="row" style="justify-content:space-between">
+          <div class="tag">FPS: <span id="fps" class="kpi">0</span></div>
+          <div class="tag">Balls: <span id="ballCount" class="kpi">0</span></div>
+        </div>
+        <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px">
+          <button id="btnRun" class="primary">Run</button>
+          <button id="btnPause">Pause</button>
+          <button id="btnReset" class="warn">Reset</button>
+        </div>
+        <div id="warnBanner" class="banner"></div>
+      </div>
+
+      <div class="group col">
+        <label for="seed">Seed</label>
+        <div class="row" style="gap:6px">
+          <input id="seed" type="text" placeholder="e.g., tornado-42" value="tornado-42" />
+          <button id="btnReseed">🎲</button>
+        </div>
+        <div class="row" style="gap:6px">
+          <label style="min-width:120px">Initial balls</label>
+          <input id="initialBalls" type="number" min="0" max="2000" value="12" style="max-width:120px"/>
+          <button id="btnSpawnInit">Spawn</button>
+        </div>
+        <div class="row" style="gap:6px"><label style="min-width:120px">Enable collisions</label><input id="chkCollide" type="checkbox" /></div>
+        <div class="row" style="gap:6px"><label style="min-width:120px">Trail fade</label><input id="chkTrail" type="checkbox" checked /></div>
+        <div class="row" style="gap:6px"><label style="min-width:120px">Wall SFX</label><input id="chkSfx" type="checkbox" /></div>
+      </div>
+
+      <div class="group col">
+        <label>Physics Engine</label>
+        <div class="row" style="gap:6px">
+          <select id="physicsSelect" style="flex:1">
+            <option value="arcade">Arcade (Perfect Bouncing)</option>
+            <option value="realistic">Realistic (Gravity + Energy Loss)</option>
+          </select>
+        </div>
+        
+        <div id="arcadeSettings" class="physics-settings">
+          <div class="option-row">
+            <label>Min Angle:</label>
+            <input id="arcadeMinAngle" type="number" min="5" max="45" value="15" step="1">
+            <span style="font-size:10px">°</span>
+          </div>
+          <div class="option-row">
+            <label>Max Angle:</label>
+            <input id="arcadeMaxAngle" type="number" min="120" max="175" value="165" step="1">
+            <span style="font-size:10px">°</span>
+          </div>
+        </div>
+        
+        <div id="realisticSettings" class="physics-settings" style="display:none">
+          <div class="option-row">
+            <label>Gravity:</label>
+            <input id="realisticGravity" type="number" min="0" max="2000" value="980" step="50">
+          </div>
+          <div class="option-row">
+            <label>Bounce:</label>
+            <input id="realisticElasticity" type="number" min="0.1" max="1.0" value="0.85" step="0.05">
+          </div>
+          <div class="option-row">
+            <label>Air Drag:</label>
+            <input id="realisticAirResistance" type="number" min="0.9" max="1.0" value="0.99" step="0.01">
+          </div>
+        </div>
+        
+        <small class="sub">Arcade = infinite energy, Realistic = natural settling</small>
+      </div>
+
+      <div class="group col">
+        <div class="row" style="gap:6px;flex-wrap:wrap">
+          <button id="btnApply" class="primary">Apply Program</button>
+          <button id="btnExportXml">Save Blocks</button>
+          <button id="btnImportXml">Load Blocks</button>
+          <button id="btnTests">Run Tests</button>
+        </div>
+        <div class="row" style="gap:6px;margin-top:6px">
+          <select id="presetSelect" style="flex:1">
+            <option value="">— Load sample program —</option>
+            <option value="duplicate">Duplicate on wall hit</option>
+            <option value="grow">Grow + color-shift on wall hit</option>
+            <option value="trail">Fade trail on tick</option>
+            <option value="escape">Score when exiting gap</option>
+          </select>
+          <button id="btnLoadPreset">Load</button>
+        </div>
+      </div>
+
+      <div class="group col">
+        <div class="row" style="gap:6px;flex-wrap:wrap">
+          <button id="btnRecord">Start Recording</button>
+          <button id="btnAutoRecord">Auto-record: OFF</button>
+          <a id="downloadLink" style="display:none"></a>
+        </div>
+        
+        <div class="recording-options">
+          <label>Recording Options</label>
+          <div class="option-row">
+            <label>Format:</label>
+            <select id="recordFormat">
+              <option value="webm">WebM</option>
+              <option value="mp4">MP4 (if supported)</option>
+            </select>
+          </div>
+          <div class="option-row">
+            <label>FPS:</label>
+            <select id="recordFps">
+              <option value="15">15</option>
+              <option value="24">24</option>
+              <option value="30" selected>30</option>
+              <option value="60">60</option>
+            </select>
+          </div>
+          <div class="option-row">
+            <label>Quality:</label>
+            <select id="recordQuality">
+              <option value="low">Low</option>
+              <option value="medium" selected>Medium</option>
+              <option value="high">High</option>
+              <option value="ultra">Ultra</option>
+            </select>
+          </div>
+          <div class="option-row">
+            <label>Bitrate:</label>
+            <input id="recordBitrate" type="number" min="500" max="50000" value="5000" step="500" placeholder="kbps">
+          </div>
+        </div>
+        
+        <small class="sub">Records directly from canvas. Format/quality support varies by browser.</small>
+      </div>
+
+      <div class="group col">
+        <label>Tips</label>
+        <ul style="margin:6px 0 0 16px;padding:0;color:var(--muted);font-size:12px">
+          <li>Click <em>Apply Program</em> after editing blocks.</li>
+          <li>Seed keeps runs repeatable.</li>
+          <li>Trail fade is a render effect; physics is unchanged.</li>
+          <li>Collisions are basic (equal mass, elastic).</li>
+          <li>Drag the divider to resize panels.</li>
+        </ul>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-wrap">
+    <div class="canvas-shell">
+      <canvas id="sim" width="1080" height="1920"></canvas>
+      <div class="ring"></div>
+      <div class="footer"><span class="tag">1080×1920 • 9:16</span></div>
+    </div>
+  </main>
+
+  <div class="resize-handle" id="resizeHandle"></div>
+
+  <aside class="right">
+    <div class="row" style="justify-content:space-between;align-items:center;padding:4px 8px">
+      <strong>Rule Editor</strong>
+      <span class="tag">Blockly</span>
+    </div>
+    <div id="blocklyDiv"></div>
+  </aside>
+
+  <!-- Toolbox XML -->
+  <xml id="toolbox" style="display:none">
+    <category name="Events" colour="#5CA699">
+      <block type="event_tick"></block>
+      <block type="event_wall_hit"></block>
+      <block type="event_ball_collision"></block>
+      <block type="event_spawn"></block>
+      <block type="event_exit"></block>
+    </category>
+    <category name="Actions" colour="#5C81A6">
+      <block type="action_spawn"></block>
+      <block type="action_duplicate"></block>
+      <block type="action_destroy"></block>
+      <block type="action_set_velocity"></block>
+      <block type="action_scale_speed"></block>
+      <block type="action_set_radius"></block>
+      <block type="action_set_color"></block>
+      <block type="action_log"></block>
+      <block type="action_score"></block>
+    </category>
+    <category name="Ball" colour="#A6745C">
+      <block type="ball_get"></block>
+      <block type="ball_set"></block>
+    </category>
+    <category name="Logic" colour="#5C68A6">
+      <block type="controls_if"></block>
+      <block type="logic_compare"></block>
+      <block type="logic_boolean"></block>
+      <block type="logic_negate"></block>
+    </category>
+    <category name="Loops" colour="#5CA65C">
+      <block type="controls_repeat_ext">
+        <value name="TIMES">
+          <shadow type="math_number">
+            <field name="NUM">5</field>
+          </shadow>
+        </value>
+      </block>
+      <block type="controls_whileUntil"></block>
+    </category>
+    <category name="Math" colour="#A65C81">
+      <block type="math_number"></block>
+      <block type="math_arithmetic"></block>
+      <block type="math_random_int"></block>
+      <block type="math_round"></block>
+      <block type="math_single"></block>
+      <block type="math_trig"></block>
+      <block type="math_constrain">
+        <value name="LOW">
+          <shadow type="math_number">
+            <field name="NUM">0</field>
+          </shadow>
+        </value>
+        <value name="HIGH">
+          <shadow type="math_number">
+            <field name="NUM">1</field>
+          </shadow>
+        </value>
+      </block>
+      <block type="util_rand"></block>
+      <block type="util_map"></block>
+    </category>
+    <category name="Variables" custom="VARIABLE" colour="#A6745C"></category>
+  </xml>
+
+  <!-- Project Scripts -->
+  <script src="js/utils.js"></script>
+  <script src="js/physics.js"></script>
+  <script src="js/blocks.js"></script>
+  <script src="js/presets.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
