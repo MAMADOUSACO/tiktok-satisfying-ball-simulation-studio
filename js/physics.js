@@ -1,5 +1,6 @@
 /**
  * Multi-Engine Physics System for Bouncing Balls Editor
+ * FIXED: Infinite loop reflection problem
  */
 
 // Engine state
@@ -34,7 +35,8 @@ const physicsConfig = {
     minReflectionAngle: 15, // degrees - prevents shallow angle cascades
     maxReflectionAngle: 165, // degrees - prevents perfect 180° bounces
     energyConservation: true,
-    gravity: 0
+    gravity: 0,
+    antiLoopRandomization: 0.02 // Small random factor to break perfect loops
   },
   realistic: {
     gravity: 980, // pixels/s² (roughly earth gravity scaled)
@@ -71,7 +73,7 @@ function pingSfx(freq = 520, dur = 0.04) {
 }
 
 // ============================================================================
-// ARCADE PHYSICS ENGINE (Perfect Mathematical Bouncing)
+// ARCADE PHYSICS ENGINE (Perfect Mathematical Bouncing) - FIXED
 // ============================================================================
 
 const ArcadePhysics = {
@@ -105,48 +107,66 @@ const ArcadePhysics = {
       return true;
     }
     
-    // Wall reflection with minimum angle constraint
+    // Wall reflection with IMPROVED angle constraint logic
     const nx = dx / dist;
     const ny = dy / dist;
     const overlap = dist + ball.r - arena.r;
     ball.x -= nx * overlap;
     ball.y -= ny * overlap;
     
-    // Calculate reflection
+    // Calculate standard reflection
     const vdotn = ball.vx * nx + ball.vy * ny;
     let newVx = ball.vx - 2 * vdotn * nx;
     let newVy = ball.vy - 2 * vdotn * ny;
     
-    // Apply minimum and maximum reflection angle constraints
+    // FIXED: Better angle constraint system to prevent infinite loops
     const config = physicsConfig.arcade;
-    const wallAngle = Math.atan2(ny, nx);
-    const reflectionAngle = Math.atan2(newVy, newVx);
-    
-    const minAngleRad = (config.minReflectionAngle * Math.PI) / 180;
-    const maxAngleRad = (config.maxReflectionAngle * Math.PI) / 180;
-    
-    // Calculate angle between reflection and wall normal
-    let angleFromNormal = Math.abs(reflectionAngle - wallAngle);
-    if (angleFromNormal > Math.PI) angleFromNormal = 2 * Math.PI - angleFromNormal;
-    
     const speed = Math.hypot(newVx, newVy);
-    let adjustedAngle = reflectionAngle;
     
-    // Prevent too shallow angles (min constraint)
-    if (angleFromNormal < minAngleRad) {
-      const sign = Math.sign(reflectionAngle - wallAngle);
-      adjustedAngle = wallAngle + sign * minAngleRad;
-    }
-    // Prevent too steep angles / perfect 180° bounces (max constraint)  
-    else if (angleFromNormal > maxAngleRad) {
-      const sign = Math.sign(reflectionAngle - wallAngle);
-      adjustedAngle = wallAngle + sign * maxAngleRad;
-    }
-    
-    // Apply adjustment if needed
-    if (adjustedAngle !== reflectionAngle) {
-      newVx = Math.cos(adjustedAngle) * speed;
-      newVy = Math.sin(adjustedAngle) * speed;
+    if (speed > 0) {
+      // Calculate angle relative to wall normal
+      const wallNormalAngle = Math.atan2(ny, nx);
+      const reflectionAngle = Math.atan2(newVy, newVx);
+      
+      // Calculate angle from normal (0 = perpendicular bounce, π/2 = parallel)
+      let angleFromNormal = Math.abs(reflectionAngle - wallNormalAngle);
+      if (angleFromNormal > Math.PI) angleFromNormal = 2 * Math.PI - angleFromNormal;
+      if (angleFromNormal > Math.PI/2) angleFromNormal = Math.PI - angleFromNormal;
+      
+      const minAngleRad = (config.minReflectionAngle * Math.PI) / 180;
+      const maxAngleRad = (config.maxReflectionAngle * Math.PI) / 180;
+      
+      let adjustedAngle = reflectionAngle;
+      let needsAdjustment = false;
+      
+      // Prevent too shallow angles (causes infinite loops)
+      if (angleFromNormal < minAngleRad) {
+        const sign = Math.sign(Math.sin(reflectionAngle - wallNormalAngle));
+        adjustedAngle = wallNormalAngle + sign * minAngleRad;
+        needsAdjustment = true;
+      }
+      // Prevent too steep angles (perfect 180° bounces)
+      else if (angleFromNormal > maxAngleRad) {
+        const sign = Math.sign(Math.sin(reflectionAngle - wallNormalAngle));
+        adjustedAngle = wallNormalAngle + sign * maxAngleRad;
+        needsAdjustment = true;
+      }
+      
+      // Apply adjustment if needed
+      if (needsAdjustment) {
+        newVx = Math.cos(adjustedAngle) * speed;
+        newVy = Math.sin(adjustedAngle) * speed;
+      }
+      
+      // CRITICAL FIX: Add small randomization to break perfect loops
+      if (config.antiLoopRandomization > 0) {
+        const randomFactor = (window.rng() - 0.5) * config.antiLoopRandomization;
+        const currentAngle = Math.atan2(newVy, newVx);
+        const adjustedRandomAngle = currentAngle + randomFactor;
+        
+        newVx = Math.cos(adjustedRandomAngle) * speed;
+        newVy = Math.sin(adjustedRandomAngle) * speed;
+      }
     }
     
     ball.vx = newVx;

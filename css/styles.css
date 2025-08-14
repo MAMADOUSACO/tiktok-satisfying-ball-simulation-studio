@@ -329,3 +329,76 @@ button.auto-record-on:hover {
   padding: 4px 6px;
   max-width: 80px;
 }
+
+/* ============================================================================ */
+/* CUSTOM DRAGGABLE PARAMETER STYLES */
+/* ============================================================================ */
+
+/* Drag ghost that follows cursor during parameter drag */
+.drag-ghost {
+  position: fixed;
+  z-index: 10000;
+  pointer-events: none;
+  opacity: 0.9;
+  background: #bb88ff;
+  color: white;
+  padding: 8px 12px;
+  border-radius: 16px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid #9966ff;
+  box-shadow: 0 4px 12px rgba(187, 136, 255, 0.4);
+  transform: translate(-50%, -50%);
+  min-width: 50px;
+  text-align: center;
+  font-family: Arial, sans-serif;
+  user-select: none;
+  transition: opacity 0.1s ease;
+}
+
+/* Enhanced drop zone highlighting for auto-connection */
+.blockly-drop-zone-highlight {
+  outline: 3px solid #44aa44 !important;
+  background-color: rgba(68, 170, 68, 0.3) !important;
+  box-shadow: 0 0 15px rgba(68, 170, 68, 0.6) !important;
+  border-radius: 8px !important;
+  transition: all 0.2s ease !important;
+}
+
+/* Parameter field hover effect */
+.blocklyFieldParameter:hover {
+  filter: drop-shadow(0 3px 6px rgba(0,0,0,0.4)) brightness(1.1) !important;
+  transform: scale(1.02) !important;
+  transition: all 0.15s ease !important;
+}
+
+/* Parameter field active state during drag */
+.blocklyFieldParameter:active {
+  filter: drop-shadow(0 1px 3px rgba(0,0,0,0.5)) brightness(0.9) !important;
+  transform: scale(0.98) !important;
+}
+
+/* Visual feedback for parameter tokens in blocks */
+.blocklyFieldParameter {
+  transition: all 0.15s ease !important;
+}
+
+/* Highlight workspace during parameter drag */
+#blocklyDiv.parameter-drag-active {
+  background-color: rgba(68, 170, 68, 0.05) !important;
+  transition: background-color 0.2s ease !important;
+}
+
+/* Custom parameter block styling */
+.blocklyPath[fill="#9966ff"] {
+  filter: drop-shadow(0 2px 4px rgba(153, 102, 255, 0.3));
+}
+
+/* Enhanced connection point visibility during drag */
+.blocklyConnection.highlighted {
+  fill: #44aa44 !important;
+  stroke: #44aa44 !important;
+  stroke-width: 2px !important;
+  r: 8 !important;
+  opacity: 1 !important;
+}

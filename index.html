@@ -26,6 +26,11 @@
           <button id="btnPause">Pause</button>
           <button id="btnReset" class="warn">Reset</button>
         </div>
+        <div class="row" style="gap:4px;flex-wrap:wrap;margin-top:4px">
+          <button id="btnStepBack" style="font-size:11px;padding:4px 8px" title="Step backward (←)">◀ Step</button>
+          <button id="btnStepForward" style="font-size:11px;padding:4px 8px" title="Step forward (→)">Step ▶</button>
+          <div class="tag">Frame: <span id="frameNumber" class="kpi">0</span></div>
+        </div>
         <div id="warnBanner" class="banner"></div>
       </div>
 
@@ -99,6 +104,8 @@
             <option value="grow">Grow + color-shift on wall hit</option>
             <option value="trail">Fade trail on tick</option>
             <option value="escape">Score when exiting gap</option>
+            <option value="collision">Collision destroys & colors (NEW)</option>
+            <option value="spawn_chain">Chain spawn effects (NEW)</option>
           </select>
           <button id="btnLoadPreset">Load</button>
         </div>
@@ -148,7 +155,29 @@
       </div>
 
       <div class="group col">
-        <label>Tips</label>
+        <label>✨ Frame Stepping Controls</label>
+        <ul style="margin:6px 0 0 16px;padding:0;color:var(--muted);font-size:12px">
+          <li><strong>◀ Step / Step ▶</strong> - Frame-by-frame simulation control</li>
+          <li><strong>← → Arrow keys</strong> - Keyboard shortcuts for stepping</li>
+          <li><strong>Spacebar</strong> - Play/pause simulation</li>
+          <li><strong>R key</strong> - Reset simulation</li>
+          <li>Perfect for debugging physics interactions!</li>
+        </ul>
+      </div>
+
+      <div class="group col">
+        <label>✨ Draggable Parameters Tips</label>
+        <ul style="margin:6px 0 0 16px;padding:0;color:var(--muted);font-size:12px">
+          <li><strong>Hold & drag</strong> purple ball tokens from event blocks</li>
+          <li>Drop on action blocks for <strong>auto-connection</strong></li>
+          <li>Green highlighting shows valid drop zones</li>
+          <li>Drop in empty space creates standalone parameter</li>
+          <li>Visual data flow like Scratch programming!</li>
+        </ul>
+      </div>
+
+      <div class="group col">
+        <label>General Tips</label>
         <ul style="margin:6px 0 0 16px;padding:0;color:var(--muted);font-size:12px">
           <li>Click <em>Apply Program</em> after editing blocks.</li>
           <li>Seed keeps runs repeatable.</li>
@@ -173,12 +202,12 @@
   <aside class="right">
     <div class="row" style="justify-content:space-between;align-items:center;padding:4px 8px">
       <strong>Rule Editor</strong>
-      <span class="tag">Blockly</span>
+      <span class="tag">✨ Enhanced with Draggable Parameters</span>
     </div>
     <div id="blocklyDiv"></div>
   </aside>
 
-  <!-- Toolbox XML -->
+  <!-- Enhanced Toolbox XML with Parameter Support -->
   <xml id="toolbox" style="display:none">
     <category name="Events" colour="#5CA699">
       <block type="event_tick"></block>
@@ -191,16 +220,48 @@
       <block type="action_spawn"></block>
       <block type="action_duplicate"></block>
       <block type="action_destroy"></block>
-      <block type="action_set_velocity"></block>
-      <block type="action_scale_speed"></block>
-      <block type="action_set_radius"></block>
-      <block type="action_set_color"></block>
+      <block type="action_set_velocity">
+        <value name="VX">
+          <shadow type="math_number">
+            <field name="NUM">100</field>
+          </shadow>
+        </value>
+        <value name="VY">
+          <shadow type="math_number">
+            <field name="NUM">100</field>
+          </shadow>
+        </value>
+      </block>
+      <block type="action_scale_speed">
+        <value name="F">
+          <shadow type="math_number">
+            <field name="NUM">1.1</field>
+          </shadow>
+        </value>
+      </block>
+      <block type="action_set_radius">
+        <value name="R">
+          <shadow type="math_number">
+            <field name="NUM">15</field>
+          </shadow>
+        </value>
+      </block>
+      <block type="action_set_color">
+        <value name="C">
+          <shadow type="text">
+            <field name="TEXT">#ff0000</field>
+          </shadow>
+        </value>
+      </block>
       <block type="action_log"></block>
       <block type="action_score"></block>
     </category>
     <category name="Ball" colour="#A6745C">
       <block type="ball_get"></block>
       <block type="ball_set"></block>
+      <block type="parameter_get">
+        <field name="PARAM_NAME">ball</field>
+      </block>
     </category>
     <category name="Logic" colour="#5C68A6">
       <block type="controls_if"></block>
@@ -239,6 +300,10 @@
       </block>
       <block type="util_rand"></block>
       <block type="util_map"></block>
+    </category>
+    <category name="Text" colour="#5CA68D">
+      <block type="text"></block>
+      <block type="text_join"></block>
     </category>
     <category name="Variables" custom="VARIABLE" colour="#A6745C"></category>
   </xml>
