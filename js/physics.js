@@ -1,6 +1,6 @@
 /**
  * Multi-Engine Physics System for Bouncing Balls Editor
- * FIXED: Infinite loop reflection problem
+ * Enhanced with State Snapshot System for Frame Stepping
  */
 
 // Engine state
@@ -17,7 +17,7 @@ const state = {
   doCollide: false,
   score: 0,
   program: null,
-  physicsEngine: 'arcade' // 'arcade' or 'realistic'
+  physicsEngine: 'arcadeSimple' // Default to the cleanest collision mode
 };
 
 // Arena configuration
@@ -33,10 +33,16 @@ const arena = {
 const physicsConfig = {
   arcade: {
     minReflectionAngle: 15, // degrees - prevents shallow angle cascades
-    maxReflectionAngle: 165, // degrees - prevents perfect 180° bounces
+    maxReflectionAngle: 165, // degrees - prevents near-180° bounces
+    energyConservation: true,
+    gravity: 0
+  },
+  arcadeSimple: {
+    minReflectionAngle: 15, // degrees - prevents shallow angle cascades
+    maxReflectionAngle: 165, // degrees - prevents near-180° bounces
     energyConservation: true,
     gravity: 0,
-    antiLoopRandomization: 0.02 // Small random factor to break perfect loops
+    separationOnly: true // No momentum transfer in collisions
   },
   realistic: {
     gravity: 980, // pixels/s² (roughly earth gravity scaled)
@@ -46,6 +52,192 @@ const physicsConfig = {
     groundLevel: 0.9 // fraction of arena radius where "ground" physics apply
   }
 };
+
+// ============================================================================
+// STATE SNAPSHOT SYSTEM FOR FRAME STEPPING
+// ============================================================================
+
+const SNAPSHOT_BUFFER_SIZE = 5000; // Store last 5000 frames (~42-83 seconds of history)
+let simulationHistory = new Map(); // Use Map for better frame tracking
+let maxSavedFrame = -1;
+
+/**
+ * Create a complete snapshot of the current simulation state
+ */
+function createStateSnapshot(frameNumber) {
+  return {
+    frameNumber: frameNumber,
+    
+    // Deep copy of balls array with all properties
+    balls: state.balls.map(ball => ({
+      id: ball.id,
+      x: ball.x,
+      y: ball.y,
+      vx: ball.vx,
+      vy: ball.vy,
+      r: ball.r,
+      color: ball.color,
+      alive: ball.alive,
+      data: { ...ball.data } // Shallow copy of data object
+    })),
+    
+    // Other simulation state
+    nextId: state.nextId,
+    t: state.t,
+    score: state.score,
+    
+    // Physics settings (in case they change during simulation)
+    physicsEngine: state.physicsEngine,
+    doCollide: state.doCollide,
+    
+    // Frame metadata
+    timestamp: performance.now()
+  };
+}
+
+/**
+ * Restore simulation state from a snapshot
+ */
+function restoreStateSnapshot(snapshot) {
+  if (!snapshot) return false;
+  
+  try {
+    // Restore balls array
+    state.balls = snapshot.balls.map(ballData => ({
+      id: ballData.id,
+      x: ballData.x,
+      y: ballData.y,
+      vx: ballData.vx,
+      vy: ballData.vy,
+      r: ballData.r,
+      color: ballData.color,
+      alive: ballData.alive,
+      data: { ...ballData.data }
+    }));
+    
+    // Restore other state
+    state.nextId = snapshot.nextId;
+    state.t = snapshot.t;
+    state.score = snapshot.score;
+    state.physicsEngine = snapshot.physicsEngine;
+    state.doCollide = snapshot.doCollide;
+    
+    // Update ball count display
+    if (window.$) {
+      window.$('#ballCount').textContent = String(state.balls.length);
+    }
+    
+    console.log(`State restored to frame ${snapshot.frameNumber} with ${state.balls.length} balls`);
+    return snapshot.frameNumber;
+  } catch (error) {
+    console.error('Failed to restore state snapshot:', error);
+    return false;
+  }
+}
+
+/**
+ * Save current state to history buffer with frame number
+ */
+function saveSimulationState(frameNumber) {
+  if (frameNumber === undefined || frameNumber === null) {
+    console.warn('saveSimulationState called without frame number');
+    return;
+  }
+  
+  const snapshot = createStateSnapshot(frameNumber);
+  
+  // Store in Map with frame number as key
+  simulationHistory.set(frameNumber, snapshot);
+  maxSavedFrame = Math.max(maxSavedFrame, frameNumber);
+  
+  // Clean up old frames to keep memory under control
+  if (simulationHistory.size > SNAPSHOT_BUFFER_SIZE) {
+    const oldestFrameToKeep = maxSavedFrame - SNAPSHOT_BUFFER_SIZE + 1;
+    for (const [frame, _] of simulationHistory) {
+      if (frame < oldestFrameToKeep) {
+        simulationHistory.delete(frame);
+      }
+    }
+  }
+  
+  // Debug log occasionally
+  if (frameNumber % 500 === 0) {
+    console.log(`State saved for frame ${frameNumber}, buffer has ${simulationHistory.size} frames`);
+  }
+}
+
+/**
+ * Restore state for a specific frame number
+ */
+function restoreSimulationState(targetFrame) {
+  if (targetFrame < 0) {
+    console.log('Cannot restore negative frame number');
+    return false;
+  }
+  
+  const snapshot = simulationHistory.get(targetFrame);
+  if (!snapshot) {
+    console.log(`No saved state for frame ${targetFrame}. Available frames: ${Math.min(...simulationHistory.keys())} to ${Math.max(...simulationHistory.keys())}`);
+    return false;
+  }
+  
+  // Restore the state
+  const restoredFrame = restoreStateSnapshot(snapshot);
+  if (restoredFrame !== false) {
+    console.log(`Successfully restored state for frame ${targetFrame}`);
+    return targetFrame;
+  }
+  
+  return false;
+}
+
+/**
+ * Get the closest available frame to a target frame
+ */
+function getClosestAvailableFrame(targetFrame) {
+  if (simulationHistory.has(targetFrame)) {
+    return targetFrame;
+  }
+  
+  // Find closest frame
+  let closestFrame = -1;
+  let minDistance = Infinity;
+  
+  for (const frame of simulationHistory.keys()) {
+    const distance = Math.abs(frame - targetFrame);
+    if (distance < minDistance) {
+      minDistance = distance;
+      closestFrame = frame;
+    }
+  }
+  
+  return closestFrame >= 0 ? closestFrame : null;
+}
+
+/**
+ * Clear simulation history (useful for reset)
+ */
+function clearSimulationHistory() {
+  simulationHistory.clear();
+  maxSavedFrame = -1;
+  console.log('Simulation history cleared');
+}
+
+/**
+ * Get history buffer stats for debugging
+ */
+function getHistoryStats() {
+  const frames = Array.from(simulationHistory.keys()).sort((a, b) => a - b);
+  const memoryUsage = JSON.stringify([...simulationHistory.values()]).length; // Rough estimate
+  
+  return {
+    totalFrames: simulationHistory.size,
+    frameRange: frames.length > 0 ? `${frames[0]} to ${frames[frames.length - 1]}` : 'none',
+    maxSavedFrame: maxSavedFrame,
+    memoryUsageBytes: memoryUsage,
+    availableFrames: frames
+  };
+}
 
 // Audio context for sound effects
 let audioCtx = null;
@@ -73,7 +265,7 @@ function pingSfx(freq = 520, dur = 0.04) {
 }
 
 // ============================================================================
-// ARCADE PHYSICS ENGINE (Perfect Mathematical Bouncing) - FIXED
+// ARCADE PHYSICS ENGINE (Perfect Mathematical Bouncing)
 // ============================================================================
 
 const ArcadePhysics = {
@@ -107,66 +299,161 @@ const ArcadePhysics = {
       return true;
     }
     
-    // Wall reflection with IMPROVED angle constraint logic
+    // Wall reflection with angle constraints
     const nx = dx / dist;
     const ny = dy / dist;
     const overlap = dist + ball.r - arena.r;
     ball.x -= nx * overlap;
     ball.y -= ny * overlap;
     
-    // Calculate standard reflection
+    // Calculate natural reflection
     const vdotn = ball.vx * nx + ball.vy * ny;
     let newVx = ball.vx - 2 * vdotn * nx;
     let newVy = ball.vy - 2 * vdotn * ny;
     
-    // FIXED: Better angle constraint system to prevent infinite loops
+    // Apply minimum and maximum reflection angle constraints
     const config = physicsConfig.arcade;
-    const speed = Math.hypot(newVx, newVy);
     
-    if (speed > 0) {
-      // Calculate angle relative to wall normal
-      const wallNormalAngle = Math.atan2(ny, nx);
-      const reflectionAngle = Math.atan2(newVy, newVx);
-      
-      // Calculate angle from normal (0 = perpendicular bounce, π/2 = parallel)
-      let angleFromNormal = Math.abs(reflectionAngle - wallNormalAngle);
-      if (angleFromNormal > Math.PI) angleFromNormal = 2 * Math.PI - angleFromNormal;
-      if (angleFromNormal > Math.PI/2) angleFromNormal = Math.PI - angleFromNormal;
-      
-      const minAngleRad = (config.minReflectionAngle * Math.PI) / 180;
-      const maxAngleRad = (config.maxReflectionAngle * Math.PI) / 180;
-      
-      let adjustedAngle = reflectionAngle;
-      let needsAdjustment = false;
-      
-      // Prevent too shallow angles (causes infinite loops)
-      if (angleFromNormal < minAngleRad) {
-        const sign = Math.sign(Math.sin(reflectionAngle - wallNormalAngle));
-        adjustedAngle = wallNormalAngle + sign * minAngleRad;
-        needsAdjustment = true;
+    // Calculate natural reflection angle in degrees (-180 to +180)
+    let reflectionAngleDeg = (Math.atan2(newVy, newVx) * 180) / Math.PI;
+    
+    // Normalize to -180 to +180 range
+    while (reflectionAngleDeg > 180) reflectionAngleDeg -= 360;
+    while (reflectionAngleDeg < -180) reflectionAngleDeg += 360;
+    
+    const speed = Math.hypot(newVx, newVy);
+    let constrainedAngleDeg = reflectionAngleDeg;
+    
+    // Apply constraints by finding closest valid angle
+    if (reflectionAngleDeg > config.maxReflectionAngle) {
+      // Ball wants to bounce at angle > max (e.g., 175°), constrain to max (e.g., 165°)
+      constrainedAngleDeg = config.maxReflectionAngle;
+      console.log(`Constrained ${reflectionAngleDeg.toFixed(1)}° to max ${config.maxReflectionAngle}°`);
+    } else if (reflectionAngleDeg < -config.maxReflectionAngle) {
+      // Ball wants to bounce at angle < -max (e.g., -175°), constrain to -max (e.g., -165°)
+      constrainedAngleDeg = -config.maxReflectionAngle;
+      console.log(`Constrained ${reflectionAngleDeg.toFixed(1)}° to -max ${-config.maxReflectionAngle}°`);
+    }
+    
+    // Apply minimum angle constraints (prevent too shallow bounces)
+    if (Math.abs(constrainedAngleDeg) < config.minReflectionAngle) {
+      // Ball wants to bounce too shallow, push to minimum
+      if (constrainedAngleDeg >= 0) {
+        constrainedAngleDeg = config.minReflectionAngle;
+      } else {
+        constrainedAngleDeg = -config.minReflectionAngle;
       }
-      // Prevent too steep angles (perfect 180° bounces)
-      else if (angleFromNormal > maxAngleRad) {
-        const sign = Math.sign(Math.sin(reflectionAngle - wallNormalAngle));
-        adjustedAngle = wallNormalAngle + sign * maxAngleRad;
-        needsAdjustment = true;
+      console.log(`Applied min angle constraint: ${constrainedAngleDeg}°`);
+    }
+    
+    // Apply the constrained angle if it changed
+    if (Math.abs(constrainedAngleDeg - reflectionAngleDeg) > 0.1) {
+      const constrainedAngleRad = (constrainedAngleDeg * Math.PI) / 180;
+      newVx = Math.cos(constrainedAngleRad) * speed;
+      newVy = Math.sin(constrainedAngleRad) * speed;
+    }
+    
+    ball.vx = newVx;
+    ball.vy = newVy;
+    
+    if (state.program?.onWallHit) {
+      try {
+        state.program.onWallHit(ballProxy(ball));
+      } catch (e) {
+        console.warn(e);
       }
-      
-      // Apply adjustment if needed
-      if (needsAdjustment) {
-        newVx = Math.cos(adjustedAngle) * speed;
-        newVy = Math.sin(adjustedAngle) * speed;
+    }
+    
+    pingSfx();
+    return true;
+  }
+};
+
+// ============================================================================
+// ARCADE SIMPLE PHYSICS ENGINE (No Momentum Transfer)
+// ============================================================================
+
+const ArcadeSimplePhysics = {
+  updateBall(ball, dt) {
+    // Pure kinematic motion - no gravity, no energy loss (same as regular arcade)
+    ball.x += ball.vx * dt;
+    ball.y += ball.vy * dt;
+  },
+
+  reflectWall(ball) {
+    // Wall physics identical to regular arcade mode
+    const dx = ball.x - arena.cx;
+    const dy = ball.y - arena.cy;
+    const dist = Math.hypot(dx, dy);
+    
+    if (dist + ball.r <= arena.r) return false;
+    
+    // Check for gap exit
+    const ang = Math.atan2(dy, dx);
+    const d = Math.atan2(Math.sin(ang - arena.gapAngle), Math.cos(ang - arena.gapAngle));
+    
+    if (Math.abs(d) < arena.gapWidth / 2) {
+      if (state.program?.onExit) {
+        try {
+          state.program.onExit(ballProxy(ball));
+        } catch (e) {
+          console.warn(e);
+        }
       }
-      
-      // CRITICAL FIX: Add small randomization to break perfect loops
-      if (config.antiLoopRandomization > 0) {
-        const randomFactor = (window.rng() - 0.5) * config.antiLoopRandomization;
-        const currentAngle = Math.atan2(newVy, newVx);
-        const adjustedRandomAngle = currentAngle + randomFactor;
-        
-        newVx = Math.cos(adjustedRandomAngle) * speed;
-        newVy = Math.sin(adjustedRandomAngle) * speed;
+      ball.x = arena.cx;
+      ball.y = arena.cy;
+      return true;
+    }
+    
+    // Wall reflection with angle constraints (same as regular arcade)
+    const nx = dx / dist;
+    const ny = dy / dist;
+    const overlap = dist + ball.r - arena.r;
+    ball.x -= nx * overlap;
+    ball.y -= ny * overlap;
+    
+    // Calculate natural reflection
+    const vdotn = ball.vx * nx + ball.vy * ny;
+    let newVx = ball.vx - 2 * vdotn * nx;
+    let newVy = ball.vy - 2 * vdotn * ny;
+    
+    // Apply minimum and maximum reflection angle constraints
+    const config = physicsConfig.arcadeSimple;
+    
+    // Calculate natural reflection angle in degrees (-180 to +180)
+    let reflectionAngleDeg = (Math.atan2(newVy, newVx) * 180) / Math.PI;
+    
+    // Normalize to -180 to +180 range
+    while (reflectionAngleDeg > 180) reflectionAngleDeg -= 360;
+    while (reflectionAngleDeg < -180) reflectionAngleDeg += 360;
+    
+    const speed = Math.hypot(newVx, newVy);
+    let constrainedAngleDeg = reflectionAngleDeg;
+    
+    // Apply constraints by finding closest valid angle
+    if (reflectionAngleDeg > config.maxReflectionAngle) {
+      constrainedAngleDeg = config.maxReflectionAngle;
+      console.log(`Constrained ${reflectionAngleDeg.toFixed(1)}° to max ${config.maxReflectionAngle}°`);
+    } else if (reflectionAngleDeg < -config.maxReflectionAngle) {
+      constrainedAngleDeg = -config.maxReflectionAngle;
+      console.log(`Constrained ${reflectionAngleDeg.toFixed(1)}° to -max ${-config.maxReflectionAngle}°`);
+    }
+    
+    // Apply minimum angle constraints (prevent too shallow bounces)
+    if (Math.abs(constrainedAngleDeg) < config.minReflectionAngle) {
+      if (constrainedAngleDeg >= 0) {
+        constrainedAngleDeg = config.minReflectionAngle;
+      } else {
+        constrainedAngleDeg = -config.minReflectionAngle;
       }
+      console.log(`Applied min angle constraint: ${constrainedAngleDeg}°`);
+    }
+    
+    // Apply the constrained angle if it changed
+    if (Math.abs(constrainedAngleDeg - reflectionAngleDeg) > 0.1) {
+      const constrainedAngleRad = (constrainedAngleDeg * Math.PI) / 180;
+      newVx = Math.cos(constrainedAngleRad) * speed;
+      newVy = Math.sin(constrainedAngleRad) * speed;
     }
     
     ball.vx = newVx;
@@ -275,7 +562,15 @@ const RealisticPhysics = {
 // ============================================================================
 
 function getCurrentEngine() {
-  return state.physicsEngine === 'realistic' ? RealisticPhysics : ArcadePhysics;
+  switch (state.physicsEngine) {
+    case 'realistic':
+      return RealisticPhysics;
+    case 'arcadeSimple':
+      return ArcadeSimplePhysics;
+    case 'arcade':
+    default:
+      return ArcadePhysics;
+  }
 }
 
 function setPhysicsEngine(engineName) {
@@ -406,11 +701,13 @@ function ballProxy(b) {
 }
 
 // ============================================================================
-// COLLISION DETECTION
+// COLLISION DETECTION (Enhanced for Property Changes)
 // ============================================================================
 
 function handleCollisions() {
   const n = state.balls.length;
+  const processedPairs = new Set(); // Track which pairs we've already processed this frame
+  
   for (let i = 0; i < n; i++) {
     const a = state.balls[i];
     if (!a.alive) continue;
@@ -419,44 +716,131 @@ function handleCollisions() {
       const b = state.balls[j];
       if (!b.alive) continue;
       
+      const pairId = `${Math.min(a.id, b.id)}-${Math.max(a.id, b.id)}`;
+      if (processedPairs.has(pairId)) continue;
+      
       const dx = b.x - a.x;
       const dy = b.y - a.y;
       const dist = Math.hypot(dx, dy);
       const minD = a.r + b.r;
       
       if (dist < minD && dist > 1e-4) {
+        processedPairs.add(pairId);
+        
+        // PHASE 1: Apply physics collision resolution
         const nx = dx / dist;
         const ny = dy / dist;
         const overlap = minD - dist;
         
-        a.x -= nx * overlap * 0.5;
-        a.y -= ny * overlap * 0.5;
-        b.x += nx * overlap * 0.5;
-        b.y += ny * overlap * 0.5;
+        // Separate balls based on current radii
+        const totalR = a.r + b.r;
+        const aRatio = a.r / totalR;
+        const bRatio = b.r / totalR;
         
-        const va = a.vx * nx + a.vy * ny;
-        const vb = b.vx * nx + b.vy * ny;
-        const dv = vb - va;
+        a.x -= nx * overlap * bRatio;  // Larger balls move less
+        a.y -= ny * overlap * bRatio;
+        b.x += nx * overlap * aRatio;
+        b.y += ny * overlap * aRatio;
         
-        a.vx += dv * nx;
-        a.vy += dv * ny;
-        b.vx -= dv * nx;
-        b.vy -= dv * ny;
-        
-        // Apply physics engine-specific collision response
-        if (state.physicsEngine === 'realistic') {
-          const elasticity = physicsConfig.realistic.elasticity;
-          a.vx *= elasticity;
-          a.vy *= elasticity;
-          b.vx *= elasticity;
-          b.vy *= elasticity;
+        // Apply momentum transfer ONLY if not in arcadeSimple mode
+        if (state.physicsEngine !== 'arcadeSimple') {
+          const va = a.vx * nx + a.vy * ny;
+          const vb = b.vx * nx + b.vy * ny;
+          const dv = vb - va;
+          
+          a.vx += dv * nx;
+          a.vy += dv * ny;
+          b.vx -= dv * nx;
+          b.vy -= dv * ny;
+          
+          // Apply physics engine-specific collision response
+          if (state.physicsEngine === 'realistic') {
+            const elasticity = physicsConfig.realistic.elasticity;
+            a.vx *= elasticity;
+            a.vy *= elasticity;
+            b.vx *= elasticity;
+            b.vy *= elasticity;
+          }
+        } else {
+          // Arcade Simple: Reflect velocities but preserve original speeds
+          const originalSpeedA = Math.hypot(a.vx, a.vy);
+          const originalSpeedB = Math.hypot(b.vx, b.vy);
+          
+          // Reflect velocity components along collision normal
+          const vaNormal = a.vx * nx + a.vy * ny;
+          const vbNormal = b.vx * nx + b.vy * ny;
+          
+          // Apply reflection (bounce off each other)
+          a.vx = a.vx - 2 * vaNormal * nx;
+          a.vy = a.vy - 2 * vaNormal * ny;
+          b.vx = b.vx - 2 * vbNormal * nx;
+          b.vy = b.vy - 2 * vbNormal * ny;
+          
+          // Restore original speeds (preserve energy per ball)
+          const newSpeedA = Math.hypot(a.vx, a.vy);
+          const newSpeedB = Math.hypot(b.vx, b.vy);
+          
+          if (newSpeedA > 0) {
+            const scaleA = originalSpeedA / newSpeedA;
+            a.vx *= scaleA;
+            a.vy *= scaleA;
+          }
+          
+          if (newSpeedB > 0) {
+            const scaleB = originalSpeedB / newSpeedB;
+            b.vx *= scaleB;
+            b.vy *= scaleB;
+          }
+          
+          console.log(`Arcade Simple collision: preserved speeds ${originalSpeedA.toFixed(1)}, ${originalSpeedB.toFixed(1)}`);
         }
         
+        // Store original radii for comparison
+        const originalARadius = a.r;
+        const originalBRadius = b.r;
+        
+        // PHASE 2: Run user collision event (may change ball properties)
         if (state.program?.onBallCollision) {
           try {
             state.program.onBallCollision(ballProxy(a), ballProxy(b));
           } catch (e) {
             console.warn(e);
+          }
+        }
+        
+        // PHASE 3: Handle any radius changes with additional separation
+        if (a.r !== originalARadius || b.r !== originalBRadius) {
+          const newDx = b.x - a.x;
+          const newDy = b.y - a.y;
+          const newDist = Math.hypot(newDx, newDy);
+          const newMinD = a.r + b.r;
+          
+          if (newDist < newMinD && newDist > 1e-4) {
+            // Balls are still overlapping after radius change - apply additional separation
+            const newNx = newDx / newDist;
+            const newNy = newDy / newDist;
+            const additionalOverlap = newMinD - newDist;
+            
+            // Calculate separation based on new radii
+            const newTotalR = a.r + b.r;
+            const newARatio = a.r / newTotalR;
+            const newBRatio = b.r / newTotalR;
+            
+            // Apply additional separation
+            a.x -= newNx * additionalOverlap * newBRatio;
+            a.y -= newNy * additionalOverlap * newBRatio;
+            b.x += newNx * additionalOverlap * newARatio;
+            b.y += newNy * additionalOverlap * newARatio;
+            
+            // Apply slight velocity adjustment to prevent re-collision
+            // This gives balls a small push away from each other
+            const separationVelocity = state.physicsEngine === 'arcadeSimple' ? 10 : 20; // Smaller push for simple mode
+            a.vx -= newNx * separationVelocity * newBRatio;
+            a.vy -= newNy * separationVelocity * newBRatio;
+            b.vx += newNx * separationVelocity * newARatio;
+            b.vy += newNy * separationVelocity * newARatio;
+            
+            console.log(`Handled radius change collision: ${originalARadius},${originalBRadius} → ${a.r},${b.r}`);
           }
         }
       }
@@ -509,6 +893,16 @@ function reset() {
   state.lastMs = null;
   state.score = 0;
   $('#ballCount').textContent = '0';
+  
+  // Clear frame stepping history
+  clearSimulationHistory();
+  
+  // Reset frame counter if the function is available
+  if (window.resetFrameCounter) {
+    // Note: We can't directly call resetFrameCounter here because it's in main.js
+    // The frame counter will be reset by the UI reset handler
+    console.log('Simulation reset - frame history cleared');
+  }
 }
 
 // ============================================================================
@@ -526,3 +920,11 @@ window.ballProxy = ballProxy;
 window.tick = tick;
 window.reset = reset;
 window.pingSfx = pingSfx;
+
+// Export state snapshot functions
+window.saveSimulationState = saveSimulationState;
+window.restoreSimulationState = restoreSimulationState;
+window.clearSimulationHistory = clearSimulationHistory;
+window.createStateSnapshot = createStateSnapshot;
+window.restoreStateSnapshot = restoreStateSnapshot;
+window.getHistoryStats = getHistoryStats; 

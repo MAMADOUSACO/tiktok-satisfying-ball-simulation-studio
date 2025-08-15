@@ -1,11 +1,14 @@
 /**
  * UI Controls and Event Handlers for Bouncing Balls Editor
+ * Enhanced with Frame Stepping Controls
  */
 
 // UI element references
 const UI = {
   fps: null,
   ballCount: null,
+  frameCount: null,
+  simulationMode: null,
   btnRun: null,
   btnPause: null,
   btnReset: null,
@@ -38,7 +41,13 @@ const UI = {
   arcadeMaxAngle: null,
   realisticGravity: null,
   realisticElasticity: null,
-  realisticAirResistance: null
+  realisticAirResistance: null,
+  // New frame stepping controls
+  btnStepBack: null,
+  btnStepForward: null,
+  btnToggleMode: null,
+  btnResetFrame: null,
+  stepSizeSelect: null
 };
 
 // Recording functionality
@@ -192,7 +201,7 @@ function switchPhysicsEngine() {
   if (engine === 'realistic') {
     UI.arcadeSettings.style.display = 'none';
     UI.realisticSettings.style.display = 'block';
-  } else {
+  } else if (engine === 'arcade' || engine === 'arcadeSimple') {
     UI.arcadeSettings.style.display = 'block';
     UI.realisticSettings.style.display = 'none';
   }
@@ -201,10 +210,15 @@ function switchPhysicsEngine() {
 }
 
 function updatePhysicsParameters() {
-  // Update arcade physics parameters
+  // Update arcade physics parameters (applies to both arcade modes)
   if (window.physicsConfig) {
-    window.physicsConfig.arcade.minReflectionAngle = parseFloat(UI.arcadeMinAngle.value) || 15;
-    window.physicsConfig.arcade.maxReflectionAngle = parseFloat(UI.arcadeMaxAngle.value) || 165;
+    const minAngle = parseFloat(UI.arcadeMinAngle.value) || 15;
+    const maxAngle = parseFloat(UI.arcadeMaxAngle.value) || 165;
+    
+    window.physicsConfig.arcade.minReflectionAngle = minAngle;
+    window.physicsConfig.arcade.maxReflectionAngle = maxAngle;
+    window.physicsConfig.arcadeSimple.minReflectionAngle = minAngle;
+    window.physicsConfig.arcadeSimple.maxReflectionAngle = maxAngle;
     
     // Update realistic physics parameters
     window.physicsConfig.realistic.gravity = parseFloat(UI.realisticGravity.value) || 980;
@@ -212,6 +226,109 @@ function updatePhysicsParameters() {
     window.physicsConfig.realistic.airResistance = parseFloat(UI.realisticAirResistance.value) || 0.99;
   }
 }
+
+// ============================================================================
+// FRAME STEPPING CONTROL FUNCTIONS
+// ============================================================================
+
+function handleStepBackward() {
+  const stepSize = parseInt(UI.stepSizeSelect.value) || 1;
+  window.stepBackward(stepSize);
+  updateStepControlsUI();
+}
+
+function handleStepForward() {
+  const stepSize = parseInt(UI.stepSizeSelect.value) || 1;
+  window.stepForward(stepSize);
+  updateStepControlsUI();
+}
+
+function handleToggleMode() {
+  const currentMode = window.simulationMode();
+  const newMode = currentMode === 'step' ? 'continuous' : 'step';
+  window.setSimulationMode(newMode);
+  updateStepControlsUI();
+  updateModeButtonText();
+}
+
+function handleResetFrame() {
+  window.resetFrameCounter();
+  updateStepControlsUI();
+}
+
+function updateModeButtonText() {
+  const mode = window.simulationMode();
+  if (UI.btnToggleMode) {
+    UI.btnToggleMode.textContent = mode === 'step' ? 'Switch to Continuous' : 'Switch to Step Mode';
+    UI.btnToggleMode.className = mode === 'step' ? 'step-mode-active' : '';
+  }
+}
+
+function updateStepControlsUI() {
+  const currentFrame = window.currentFrame();
+  const mode = window.simulationMode();
+  
+  // Update step buttons
+  if (UI.btnStepBack) {
+    UI.btnStepBack.disabled = (currentFrame <= 0);
+    UI.btnStepBack.title = `Step backward ${UI.stepSizeSelect?.value || 1} frame(s) (Left Arrow)`;
+  }
+  
+  if (UI.btnStepForward) {
+    UI.btnStepForward.disabled = false;
+    UI.btnStepForward.title = `Step forward ${UI.stepSizeSelect?.value || 1} frame(s) (Right Arrow)`;
+  }
+  
+  // Update run/pause button states based on mode
+  if (UI.btnRun && UI.btnPause) {
+    if (mode === 'step') {
+      // In step mode, show different button behavior
+      UI.btnRun.textContent = 'Enable Physics';
+      UI.btnPause.textContent = 'Disable Physics';
+    } else {
+      // In continuous mode, normal play/pause
+      UI.btnRun.textContent = 'Run';
+      UI.btnPause.textContent = 'Pause';
+    }
+    
+    if (window.state.running) {
+      UI.btnRun.disabled = true;
+      UI.btnPause.disabled = false;
+    } else {
+      UI.btnRun.disabled = false;
+      UI.btnPause.disabled = true;
+    }
+  }
+  
+  // Update mode toggle button
+  updateModeButtonText();
+  
+  // Show/hide step controls based on mode
+  const stepControls = document.querySelector('.step-controls');
+  if (stepControls) {
+    stepControls.style.opacity = mode === 'step' ? '1' : '0.5';
+  }
+}
+
+function showHistoryStats() {
+  const stats = window.getHistoryStats();
+  const message = `History Buffer Stats:
+- Total frames stored: ${stats.totalFrames}
+- Frame range: ${stats.frameRange}
+- Max saved frame: ${stats.maxSavedFrame}
+- Memory usage: ~${Math.round(stats.memoryUsageBytes / 1024)}KB
+- Available frames: ${stats.availableFrames.length > 10 ? 
+    `${stats.availableFrames.slice(0, 5).join(', ')}...${stats.availableFrames.slice(-5).join(', ')}` : 
+    stats.availableFrames.join(', ')}`;
+  
+  console.log(message);
+  console.log('Full available frames list:', stats.availableFrames);
+  alert(message);
+}
+
+// ============================================================================
+// EXISTING FUNCTIONS (Enhanced)
+// ============================================================================
 
 function applyProgram() {
   try {
@@ -285,7 +402,7 @@ function runTests() {
   }
   
   ok('MediaRecorder available OR disabled gracefully', 
-    (!!window.MediaRecorder && !!$('#sim').captureStream) || UI.btnRecord.disabled === true);
+    (!!window.MediaRecorder && !!window.$('#sim').captureStream) || UI.btnRecord.disabled === true);
   
   try {
     ok('Auto-record functionality initialized', typeof autoRecordEnabled === 'boolean');
@@ -296,7 +413,15 @@ function runTests() {
     ok('Arcade physics parameters available', !!(UI.arcadeMinAngle && UI.arcadeMaxAngle && window.physicsConfig.arcade));
     ok('Realistic physics parameters available', !!(UI.realisticGravity && window.physicsConfig.realistic));
   } catch (e) {
-    ok('New UI features threw', false);
+    ok('UI features threw', false);
+  }
+  
+  try {
+    ok('Frame stepping functions available', !!(window.stepForward && window.stepBackward && window.setSimulationMode));
+    ok('State snapshot functions available', !!(window.saveSimulationState && window.restoreSimulationState));
+    ok('Frame stepping UI elements present', !!(UI.btnStepBack && UI.btnStepForward && UI.frameCount));
+  } catch (e) {
+    ok('Frame stepping features threw', false);
   }
   
   try {
@@ -315,41 +440,39 @@ function runTests() {
 }
 
 function setupEventListeners() {
-  // Control buttons
+  // Control buttons (enhanced)
   UI.btnApply.addEventListener('click', applyProgram);
   
   UI.btnRun.addEventListener('click', () => {
-    if (!window.state.program) applyProgram();
-    
-    // Reset time tracking to prevent time jumps when resuming
-    window.state.lastMs = null;
-    window.state.accumulator = 0;
-    
-    window.state.running = true;
+    window.runSimulation();
     
     // Auto-record functionality
     if (autoRecordEnabled && (!mediaRecorder || mediaRecorder.state === 'inactive')) {
       startRecording();
     }
     
-    window.requestAnimationFrame(window.frame);
+    updateStepControlsUI();
   });
   
   UI.btnPause.addEventListener('click', () => {
-    window.state.running = false;
-    
-    // Clear FPS display when stopped
-    window.$('#fps').textContent = '0';
+    window.pauseSimulation();
     
     // Auto-record functionality
     if (autoRecordEnabled && mediaRecorder && mediaRecorder.state === 'recording') {
       stopRecording();
     }
+    
+    updateStepControlsUI();
   });
   
   UI.btnReset.addEventListener('click', () => {
     window.reset();
     window.clearCanvas(true);
+    
+    // Reset frame counter
+    if (window.resetFrameCounter) {
+      window.resetFrameCounter();
+    }
     
     // Clear FPS display when reset
     window.$('#fps').textContent = '0';
@@ -361,7 +484,30 @@ function setupEventListeners() {
     if (autoRecordEnabled && mediaRecorder && mediaRecorder.state === 'recording') {
       stopRecording();
     }
+    
+    updateStepControlsUI();
   });
+  
+  // Frame stepping controls
+  if (UI.btnStepBack) {
+    UI.btnStepBack.addEventListener('click', handleStepBackward);
+  }
+  
+  if (UI.btnStepForward) {
+    UI.btnStepForward.addEventListener('click', handleStepForward);
+  }
+  
+  if (UI.btnToggleMode) {
+    UI.btnToggleMode.addEventListener('click', handleToggleMode);
+  }
+  
+  if (UI.btnResetFrame) {
+    UI.btnResetFrame.addEventListener('click', handleResetFrame);
+  }
+  
+  if (UI.stepSizeSelect) {
+    UI.stepSizeSelect.addEventListener('change', updateStepControlsUI);
+  }
   
   // Seed controls
   UI.btnReseed.addEventListener('click', () => {
@@ -410,12 +556,10 @@ function setupEventListeners() {
   
   // Recording options
   UI.recordFormat.addEventListener('change', () => {
-    // Update filename extension in real-time if needed
     console.log('Recording format changed to:', UI.recordFormat.value);
   });
   
   UI.recordQuality.addEventListener('change', () => {
-    // Update bitrate field based on quality preset
     const qualityMap = {
       low: 1000,
       medium: 5000,
@@ -494,6 +638,8 @@ function initializeUI() {
   // Get all UI element references
   UI.fps = $('#fps');
   UI.ballCount = $('#ballCount');
+  UI.frameCount = $('#frameCount');
+  UI.simulationMode = $('#simulationMode');
   UI.btnRun = $('#btnRun');
   UI.btnPause = $('#btnPause');
   UI.btnReset = $('#btnReset');
@@ -528,6 +674,13 @@ function initializeUI() {
   UI.realisticElasticity = $('#realisticElasticity');
   UI.realisticAirResistance = $('#realisticAirResistance');
   
+  // Frame stepping control references
+  UI.btnStepBack = $('#btnStepBack');
+  UI.btnStepForward = $('#btnStepForward');
+  UI.btnToggleMode = $('#btnToggleMode');
+  UI.btnResetFrame = $('#btnResetFrame');
+  UI.stepSizeSelect = $('#stepSizeSelect');
+  
   // Initialize settings from checkboxes
   window.state.doTrail = UI.chkTrail.checked;
   window.state.doSfx = UI.chkSfx.checked;
@@ -551,6 +704,10 @@ function initializeUI() {
     }
   }
   
+  // Initialize step controls UI
+  updateStepControlsUI();
+  updateModeButtonText();
+  
   // Setup all event listeners
   setupEventListeners();
 }
@@ -558,3 +715,5 @@ function initializeUI() {
 // Export for use in main.js
 window.initializeUI = initializeUI;
 window.applyProgram = applyProgram;
+window.updateStepControlsUI = updateStepControlsUI;
+window.showHistoryStats = showHistoryStats;

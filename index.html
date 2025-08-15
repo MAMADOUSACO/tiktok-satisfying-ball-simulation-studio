@@ -11,6 +11,82 @@
   
   <!-- Project Styles -->
   <link rel="stylesheet" href="css/styles.css">
+  
+  <style>
+    /* Additional styles for frame stepping controls */
+    .step-controls {
+      display: grid;
+      gap: 6px;
+      margin-top: 8px;
+      padding: 8px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.01);
+    }
+    
+    .step-row {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+    }
+    
+    .step-button {
+      background: linear-gradient(180deg, #1a3a5e, #0f274d);
+      border-color: #2d4972;
+      color: var(--text);
+      padding: 6px 10px;
+      border-radius: 8px;
+      font-size: 11px;
+      min-width: 60px;
+    }
+    
+    .step-button:hover:not(:disabled) {
+      border-color: #3a5f85;
+      background: linear-gradient(180deg, #1f4066, #14304f);
+    }
+    
+    .step-button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    .step-mode-active {
+      background: linear-gradient(180deg, #0e4d2b, #0a3d22) !important;
+      border-color: #1a5d35 !important;
+      color: var(--ok) !important;
+    }
+    
+    .step-mode-active:hover {
+      border-color: #2a7d45 !important;
+    }
+    
+    .frame-display {
+      background: #0c1220;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      text-align: center;
+      min-width: 60px;
+    }
+    
+    .continuous-mode {
+      color: var(--accent);
+    }
+    
+    .step-mode {
+      color: var(--ok);
+      font-weight: 600;
+    }
+    
+    .keyboard-hints {
+      font-size: 10px;
+      color: var(--muted);
+      margin-top: 4px;
+      line-height: 1.3;
+    }
+  </style>
 </head>
 <body>
   <aside class="sidebar">
@@ -26,12 +102,42 @@
           <button id="btnPause">Pause</button>
           <button id="btnReset" class="warn">Reset</button>
         </div>
-        <div class="row" style="gap:4px;flex-wrap:wrap;margin-top:4px">
-          <button id="btnStepBack" style="font-size:11px;padding:4px 8px" title="Step backward (←)">◀ Step</button>
-          <button id="btnStepForward" style="font-size:11px;padding:4px 8px" title="Step forward (→)">Step ▶</button>
-          <div class="tag">Frame: <span id="frameNumber" class="kpi">0</span></div>
-        </div>
         <div id="warnBanner" class="banner"></div>
+      </div>
+
+      <div class="group col">
+        <label>🎮 Frame Stepping Control</label>
+        <div class="row" style="justify-content:space-between;align-items:center">
+          <div class="tag">Frame: <span id="frameCount" class="kpi">0</span></div>
+          <div class="tag">Mode: <span id="simulationMode" class="kpi continuous-mode">continuous</span></div>
+        </div>
+        
+        <div class="step-controls">
+          <div class="step-row">
+            <button id="btnStepBack" class="step-button" title="Step backward (Left Arrow)">⏮️ Back</button>
+            <button id="btnStepForward" class="step-button" title="Step forward (Right Arrow)">⏭️ Forward</button>
+            <select id="stepSizeSelect" style="flex:1;font-size:11px;padding:4px">
+              <option value="1">1 frame</option>
+              <option value="5">5 frames</option>
+              <option value="10">10 frames</option>
+              <option value="30">30 frames</option>
+              <option value="60">60 frames</option>
+            </select>
+          </div>
+          
+          <div class="step-row">
+            <button id="btnToggleMode" class="step-button" style="flex:1" title="Toggle mode (Ctrl+S)">Switch to Step Mode</button>
+            <button id="btnResetFrame" class="step-button warn" title="Reset frame counter (Ctrl+R)">🔄 Reset</button>
+          </div>
+          
+          <div class="step-row">
+            <button onclick="window.showHistoryStats()" class="step-button" style="flex:1;font-size:10px" title="Show frame buffer debug info">📊 Debug Info</button>
+          </div>
+          
+          <div class="keyboard-hints">
+            <strong>Shortcuts:</strong> Space (step/play), ← → (step), Shift+← → (×10), Ctrl+S (mode), Ctrl+R (reset)
+          </div>
+        </div>
       </div>
 
       <div class="group col">
@@ -54,6 +160,7 @@
         <label>Physics Engine</label>
         <div class="row" style="gap:6px">
           <select id="physicsSelect" style="flex:1">
+            <option value="arcadeSimple">Arcade Simple (No Energy Transfer)</option>
             <option value="arcade">Arcade (Perfect Bouncing)</option>
             <option value="realistic">Realistic (Gravity + Energy Loss)</option>
           </select>
@@ -87,7 +194,7 @@
           </div>
         </div>
         
-        <small class="sub">Arcade = infinite energy, Realistic = natural settling</small>
+        <small class="sub">Simple = no momentum transfer, Arcade = elastic collisions, Realistic = natural settling</small>
       </div>
 
       <div class="group col">
@@ -155,17 +262,6 @@
       </div>
 
       <div class="group col">
-        <label>✨ Frame Stepping Controls</label>
-        <ul style="margin:6px 0 0 16px;padding:0;color:var(--muted);font-size:12px">
-          <li><strong>◀ Step / Step ▶</strong> - Frame-by-frame simulation control</li>
-          <li><strong>← → Arrow keys</strong> - Keyboard shortcuts for stepping</li>
-          <li><strong>Spacebar</strong> - Play/pause simulation</li>
-          <li><strong>R key</strong> - Reset simulation</li>
-          <li>Perfect for debugging physics interactions!</li>
-        </ul>
-      </div>
-
-      <div class="group col">
         <label>✨ Draggable Parameters Tips</label>
         <ul style="margin:6px 0 0 16px;padding:0;color:var(--muted);font-size:12px">
           <li><strong>Hold & drag</strong> purple ball tokens from event blocks</li>
@@ -173,6 +269,28 @@
           <li>Green highlighting shows valid drop zones</li>
           <li>Drop in empty space creates standalone parameter</li>
           <li>Visual data flow like Scratch programming!</li>
+        </ul>
+      </div>
+
+      <div class="group col">
+        <label>🎮 Frame Stepping Tips</label>
+        <ul style="margin:6px 0 0 16px;padding:0;color:var(--muted);font-size:12px">
+          <li><strong>Step Mode:</strong> Precise frame-by-frame control</li>
+          <li><strong>Continuous Mode:</strong> Normal real-time animation</li>
+          <li>Step backward uses saved simulation states (5000 frames)</li>
+          <li>Perfect for debugging physics behaviors</li>
+          <li>Use step size selector for faster navigation</li>
+        </ul>
+      </div>
+
+      <div class="group col">
+        <label>⚙️ Physics Modes</label>
+        <ul style="margin:6px 0 0 16px;padding:0;color:var(--muted);font-size:12px">
+          <li><strong>Arcade Simple:</strong> No momentum transfer, balls keep speed</li>
+          <li><strong>Arcade:</strong> Elastic collisions with perfect energy conservation</li>
+          <li><strong>Realistic:</strong> Gravity, air resistance, energy loss</li>
+          <li>Wall angle constraints apply to all arcade modes</li>
+          <li>Perfect for different simulation styles</li>
         </ul>
       </div>
 
@@ -202,7 +320,7 @@
   <aside class="right">
     <div class="row" style="justify-content:space-between;align-items:center;padding:4px 8px">
       <strong>Rule Editor</strong>
-      <span class="tag">✨ Enhanced with Draggable Parameters</span>
+      <span class="tag">✨ Enhanced with Draggable Parameters & Frame Stepping</span>
     </div>
     <div id="blocklyDiv"></div>
   </aside>
@@ -211,13 +329,29 @@
   <xml id="toolbox" style="display:none">
     <category name="Events" colour="#5CA699">
       <block type="event_tick"></block>
-      <block type="event_wall_hit"></block>
-      <block type="event_ball_collision"></block>
-      <block type="event_spawn"></block>
-      <block type="event_exit"></block>
+      <block type="event_wall_hit">
+        <field name="PARAM_BALL">ball</field>
+      </block>
+      <block type="event_ball_collision">
+        <field name="PARAM_BALL1">ball1</field>
+        <field name="PARAM_BALL2">ball2</field>
+      </block>
+      <block type="event_spawn">
+        <field name="PARAM_BALL">newBall</field>
+      </block>
+      <block type="event_exit">
+        <field name="PARAM_BALL">ball</field>
+      </block>
     </category>
     <category name="Actions" colour="#5C81A6">
-      <block type="action_spawn"></block>
+      <block type="action_spawn">
+        <field name="N">1</field>
+        <value name="R">
+          <shadow type="math_number">
+            <field name="NUM">15</field>
+          </shadow>
+        </value>
+      </block>
       <block type="action_duplicate"></block>
       <block type="action_destroy"></block>
       <block type="action_set_velocity">
@@ -253,21 +387,62 @@
           </shadow>
         </value>
       </block>
-      <block type="action_log"></block>
-      <block type="action_score"></block>
+      <block type="action_log">
+        <value name="MSG">
+          <shadow type="text">
+            <field name="TEXT">Hello!</field>
+          </shadow>
+        </value>
+      </block>
+      <block type="action_score">
+        <value name="D">
+          <shadow type="math_number">
+            <field name="NUM">1</field>
+          </shadow>
+        </value>
+      </block>
     </category>
     <category name="Ball" colour="#A6745C">
-      <block type="ball_get"></block>
-      <block type="ball_set"></block>
+      <block type="ball_get">
+        <field name="K">x</field>
+      </block>
+      <block type="ball_set">
+        <field name="K">x</field>
+        <value name="V">
+          <shadow type="math_number">
+            <field name="NUM">100</field>
+          </shadow>
+        </value>
+      </block>
       <block type="parameter_get">
         <field name="PARAM_NAME">ball</field>
       </block>
     </category>
     <category name="Logic" colour="#5C68A6">
       <block type="controls_if"></block>
-      <block type="logic_compare"></block>
-      <block type="logic_boolean"></block>
-      <block type="logic_negate"></block>
+      <block type="logic_compare">
+        <field name="OP">EQ</field>
+        <value name="A">
+          <shadow type="math_number">
+            <field name="NUM">10</field>
+          </shadow>
+        </value>
+        <value name="B">
+          <shadow type="math_number">
+            <field name="NUM">10</field>
+          </shadow>
+        </value>
+      </block>
+      <block type="logic_boolean">
+        <field name="BOOL">TRUE</field>
+      </block>
+      <block type="logic_negate">
+        <value name="BOOL">
+          <shadow type="logic_boolean">
+            <field name="BOOL">TRUE</field>
+          </shadow>
+        </value>
+      </block>
     </category>
     <category name="Loops" colour="#5CA65C">
       <block type="controls_repeat_ext">
@@ -280,13 +455,63 @@
       <block type="controls_whileUntil"></block>
     </category>
     <category name="Math" colour="#A65C81">
-      <block type="math_number"></block>
-      <block type="math_arithmetic"></block>
-      <block type="math_random_int"></block>
-      <block type="math_round"></block>
-      <block type="math_single"></block>
-      <block type="math_trig"></block>
+      <block type="math_number">
+        <field name="NUM">10</field>
+      </block>
+      <block type="math_arithmetic">
+        <field name="OP">ADD</field>
+        <value name="A">
+          <shadow type="math_number">
+            <field name="NUM">1</field>
+          </shadow>
+        </value>
+        <value name="B">
+          <shadow type="math_number">
+            <field name="NUM">1</field>
+          </shadow>
+        </value>
+      </block>
+      <block type="math_random_int">
+        <value name="FROM">
+          <shadow type="math_number">
+            <field name="NUM">1</field>
+          </shadow>
+        </value>
+        <value name="TO">
+          <shadow type="math_number">
+            <field name="NUM">100</field>
+          </shadow>
+        </value>
+      </block>
+      <block type="math_round">
+        <value name="NUM">
+          <shadow type="math_number">
+            <field name="NUM">3.14</field>
+          </shadow>
+        </value>
+      </block>
+      <block type="math_single">
+        <field name="OP">ROOT</field>
+        <value name="NUM">
+          <shadow type="math_number">
+            <field name="NUM">9</field>
+          </shadow>
+        </value>
+      </block>
+      <block type="math_trig">
+        <field name="OP">SIN</field>
+        <value name="NUM">
+          <shadow type="math_number">
+            <field name="NUM">45</field>
+          </shadow>
+        </value>
+      </block>
       <block type="math_constrain">
+        <value name="VALUE">
+          <shadow type="math_number">
+            <field name="NUM">50</field>
+          </shadow>
+        </value>
         <value name="LOW">
           <shadow type="math_number">
             <field name="NUM">0</field>
@@ -294,12 +519,38 @@
         </value>
         <value name="HIGH">
           <shadow type="math_number">
-            <field name="NUM">1</field>
+            <field name="NUM">100</field>
           </shadow>
         </value>
       </block>
       <block type="util_rand"></block>
-      <block type="util_map"></block>
+      <block type="util_map">
+        <value name="X">
+          <shadow type="math_number">
+            <field name="NUM">50</field>
+          </shadow>
+        </value>
+        <value name="A">
+          <shadow type="math_number">
+            <field name="NUM">0</field>
+          </shadow>
+        </value>
+        <value name="B">
+          <shadow type="math_number">
+            <field name="NUM">100</field>
+          </shadow>
+        </value>
+        <value name="C">
+          <shadow type="math_number">
+            <field name="NUM">0</field>
+          </shadow>
+        </value>
+        <value name="D">
+          <shadow type="math_number">
+            <field name="NUM">1</field>
+          </shadow>
+        </value>
+      </block>
     </category>
     <category name="Text" colour="#5CA68D">
       <block type="text"></block>
